@@ -1,0 +1,164 @@
+@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@rendermode InteractiveServer
+
+@inject ChatStateService ChatState
+@inject IChatService ChatService
+
+@if (ChatState.ChatSelecionadoId == Guid.Empty)
+{
+    <div class="welcome-container">
+        <h1>Bem-vindo(a)</h1>
+        <p>O que está pensando?</p>
+
+        <div class="input-area welcome">
+            <input placeholder="Digite algo para começar..."
+                   @bind="Texto"
+                   @onkeydown="HandleInputKeyDown" />
+
+            <button @onclick="Enviar" disabled="@Enviando">➤</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="chat-header">
+        <div class="chat-title">@TituloChatAtual</div>
+        <div class="chat-sub">AI</div>
+    </div>
+
+    <div class="messages">
+        @foreach (var msg in Mensagens)
+        {
+            <div class="message-row @(msg.Role == "user" ? "user-row" : "bot-row")">
+                @if (EhMensagemBot(msg))
+                {
+                    <div class="avatar">🤖</div>
+                }
+
+                <div class="message @(msg.Role == "user" ? "user" : "bot")">
+                    @msg.Content
+                </div>
+
+                @if (msg.Role == "user")
+                {
+                    <div class="avatar user-avatar">C</div>
+                }
+            </div>
+        }
+
+        @if (Enviando)
+        {
+            <div class="message-row bot-row">
+                <div class="avatar">🤖</div>
+                <div class="message bot loading-message">
+                    <span class="loading-dot"></span>
+                    <span class="loading-dot"></span>
+                    <span class="loading-dot"></span>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="input-area">
+        <input placeholder="Escreva sua mensagem aqui..."
+               @bind="Texto"
+               @onkeydown="HandleInputKeyDown" />
+        <button @onclick="Enviar" disabled="@Enviando">➤</button>
+    </div>
+}
+
+@code {
+    List<ChatMessage> Mensagens = new();
+    string TituloChatAtual = "Novo chat";
+    string Texto = string.Empty;
+    bool Enviando;
+
+    #region [UPDATESCREENCONFIGURATION]
+    protected override void OnInitialized()
+    {
+        ChatState.OnChange += CarregarChat;
+    }
+
+    async void CarregarChat()
+    {
+        var chatId = ChatState.ChatSelecionadoId;
+
+        if (chatId == Guid.Empty)
+        {
+            Mensagens.Clear();
+            TituloChatAtual = "Novo chat";
+            Enviando = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        Mensagens = await ChatService.GetMessagesAsync(chatId);
+        var chats = await ChatService.ListChatsAsync();
+        TituloChatAtual = chats.FirstOrDefault(c => c.Id == chatId)?.Name ?? "Chat";
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ChatState.OnChange -= CarregarChat;
+    }
+    #endregion [UPDATESCREENCONFIGURATION]
+
+    #region [SENDMESSAGE]
+    async Task Enviar()
+    {
+        if (Enviando || string.IsNullOrWhiteSpace(Texto))
+        {
+            return;
+        }
+
+        var textoUsuario = Texto.Trim();
+
+        Texto = string.Empty;
+        Enviando = true;
+
+        Mensagens.Add(new ChatMessage
+        {
+            Role = "user",
+            Content = textoUsuario
+        });
+
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            if (ChatState.ChatSelecionadoId == Guid.Empty)
+            {
+                var novoId = await ChatService.CreateChatAsync(textoUsuario);
+
+                ChatState.SelecionarChat(novoId);
+
+                Mensagens = await ChatService.GetMessagesAsync(novoId);
+                var chats = await ChatService.ListChatsAsync();
+                TituloChatAtual = chats.FirstOrDefault(c => c.Id == novoId)?.Name ?? "Chat";
+                return;
+            }
+
+            await ChatService.SendMessageAsync(ChatState.ChatSelecionadoId, textoUsuario);
+            Mensagens = await ChatService.GetMessagesAsync(ChatState.ChatSelecionadoId);
+        }
+        finally
+        {
+            Enviando = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task HandleInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await Enviar();
+        }
+    }
+
+    bool EhMensagemBot(ChatMessage msg) => msg.Role is "assistant" or "bot";
+    #endregion [SENDMESSAGE]
+}

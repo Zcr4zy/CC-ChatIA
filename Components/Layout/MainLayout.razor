@@ -1,0 +1,97 @@
+﻿@inherits LayoutComponentBase
+
+@inject ChatStateService ChatState
+@inject IChatService ChatService
+
+<div class="layout">
+    <aside class="sidebar @(SidebarMinimizada ? "mini" : "")">
+        <div class="buttons">
+            <button class="btn-new" @onclick="CreateChat">@(SidebarMinimizada ? "+" : "+ NOVO CHAT")</button>
+            <button class="btn-toggle" @onclick="ToggleSidebar">☰</button>
+        </div>
+
+        <div class="chat-list">
+            @foreach (var chat in Chats)
+            {
+                <div class="chat-item @(chat.Id == ChatSelecionadoId ? "active" : "")" @onclick="() => Selecionar(chat.Id)">
+                    <span>@chat.Name</span>
+                    <button class="delete-btn" @onclick="@(e => Deletar(chat.Id))" @onclick:stopPropagation="true">
+                        🗑️
+                    </button>
+                </div>      
+            }
+        </div>
+        <div class="profile">
+            <div class="avatar">C</div>
+            <span>Carlos e Carlinho</span>
+        </div>
+    </aside>
+    <main class="main">
+        @Body
+    </main>
+</div>
+
+@code {
+    #region [LOAD]
+    List<Chat> Chats = new();
+    protected override async Task OnInitializedAsync()
+    {
+        ChatState.OnChange += HandleChatStateChanged;
+        ChatSelecionadoId = ChatState.ChatSelecionadoId;
+        await RecarregarChatsAsync();
+    }
+    #endregion [LOAD]
+
+    #region [SELEÇÃO]
+    Guid ChatSelecionadoId = Guid.Empty;
+    void Selecionar(Guid id)
+    {
+        ChatState.SelecionarChat(id);
+    }
+    #endregion [SELEÇÃO]
+
+    #region [ANIMAÇÃO]
+    bool SidebarMinimizada = false;
+    void ToggleSidebar()
+    {
+        SidebarMinimizada = !SidebarMinimizada;
+    }
+    #endregion [ANIMAÇÃO]
+
+    #region [CREATECHAT]
+    void CreateChat(){
+        ChatState.SelecionarChat(Guid.Empty);
+        StateHasChanged();
+    }
+
+    #endregion [CREATECHAT]
+    async Task Deletar(Guid id)
+    {
+        await ChatService.DeletarChatAsync(id);
+
+        if (ChatSelecionadoId == id)
+        {
+            ChatState.SelecionarChat(Guid.Empty);
+        }
+
+        await RecarregarChatsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async void HandleChatStateChanged()
+    {
+        ChatSelecionadoId = ChatState.ChatSelecionadoId;
+        await RecarregarChatsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task RecarregarChatsAsync()
+    {
+        Chats = await ChatService.ListChatsAsync();
+    }
+
+    public void Dispose()
+    {
+        ChatState.OnChange -= HandleChatStateChanged;
+    }
+}
