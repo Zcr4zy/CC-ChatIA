@@ -1,5 +1,4 @@
 @page "/"
-@using Microsoft.AspNetCore.Components.Web
 @implements IDisposable
 @rendermode InteractiveServer
 
@@ -7,35 +6,47 @@
 @inject IChatService ChatService
 @inject IJSRuntime JS
 
-@if (ChatState.ChatSelecionadoId == Guid.Empty)
+@if (ChatState.IdSelectedChat == Guid.Empty)
 {
-    <div class="welcome-container">
-        <h1>Bem-vindo(a)</h1>
-        <p>O que está pensando?</p>
-
-        <div class="input-area welcome">
-            <input placeholder="Digite algo para começar..."
-                   @bind="Texto"
-                   @onkeydown="HandleInputKeyDown" />
-
-            <button @onclick="Enviar" disabled="@Enviando">➤</button>
+    @if (Sending)
+    {
+        <div class="welcome-container">
+            <h1>Bem-vindo(a)</h1>
+            <p>O que está pensando?</p>
+            <div class="message bot loading-message">
+                <span class="loading-dot"></span>
+                <span class="loading-dot"></span>
+                <span class="loading-dot"></span>
+            </div>
         </div>
-    </div>
+    }
+    else{
+        <div class="welcome-container">
+            <h1>Bem-vindo(a)</h1>
+            <p>O que está pensando?</p>
+            <div class="input-area welcome">
+                <input placeholder="Digite algo para começar..." @bind="Message" @bind:event="oninput" @onkeydown="HandleInputKeyDown" />
+
+                <button @onclick="SendMessage" disabled="@Sending">➤</button>
+            </div>
+        </div>
+    }   
 }
 else
 {
     <div class="chat-header">
-        <div class="chat-title">@TituloChatAtual</div>
-        <div class="chat-sub">AI</div>
+        <div class="chat-title">@CurrentChatTitle</div>
     </div>
 
     <div class="messages" @ref="MessagesContainer">
-        @foreach (var msg in Mensagens)
+        @foreach (var msg in Messages)
         {
             <div class="message-row @(msg.Role == "user" ? "user-row" : "bot-row")">
-                @if (EhMensagemBot(msg))
+                @if (IsBotMessage(msg))
                 {
-                    <div class="avatar">🤖</div>
+                    <div class="avatar">
+                        <img src="logo.png" class="img-logo" />
+                    </div>
                 }
 
                 <div class="message @(msg.Role == "user" ? "user" : "bot")">
@@ -49,10 +60,12 @@ else
             </div>
         }
 
-        @if (Enviando)
+        @if (Sending)
         {
             <div class="message-row bot-row">
-                <div class="avatar">🤖</div>
+                <div class="avatar">
+                    <img src="logo.png" class="img-logo" />
+                </div>
                 <div class="message bot loading-message">
                     <span class="loading-dot"></span>
                     <span class="loading-dot"></span>
@@ -63,116 +76,123 @@ else
     </div>
 
     <div class="input-area">
-        <input placeholder="Escreva sua mensagem aqui..."
-               @bind="Texto"
-               @onkeydown="HandleInputKeyDown" />
-        <button @onclick="Enviar" disabled="@Enviando">➤</button>
+        <input placeholder="Escreva sua mensagem aqui..." @bind="Message" @bind:event="oninput" @onkeydown="HandleInputKeyDown" />
+        <button @onclick="SendMessage" disabled="@Sending">➤</button>
     </div>
 }
 
 @code {
-    List<ChatMessage> Mensagens = new();
-    string TituloChatAtual = "Novo chat";
-    string Texto = string.Empty;
-    bool Enviando;
-    bool DeveRolarParaFim;
+    List<ChatMessage> Messages = new();
+    string CurrentChatTitle = "Novo chat";
+    string Message = string.Empty;
+    bool Sending;
+    bool ShouldScrollDown;
     ElementReference MessagesContainer;
 
+    #region [LOAD]
     protected override void OnInitialized()
     {
-        ChatState.OnChange += CarregarChat;
+        ChatState.OnChange += LoadChat;
+    }
+
+    async void LoadChat()
+    {
+        var chatId = ChatState.IdSelectedChat;
+
+        if (chatId == Guid.Empty)
+        {
+            Messages.Clear();
+            CurrentChatTitle = "Novo chat";
+            Sending = false;
+            ShouldScrollDown = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        Messages = await ChatService.GetMessagesAsync(chatId);
+        var chats = await ChatService.ListChatsAsync();
+        CurrentChatTitle = chats.FirstOrDefault(c => c.Id == chatId)?.Name ?? "Chat";
+        ShouldScrollDown = true;
+
+        await InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (DeveRolarParaFim && ChatState.ChatSelecionadoId != Guid.Empty)
+        if (ShouldScrollDown && ChatState.IdSelectedChat != Guid.Empty)
         {
-            DeveRolarParaFim = false;
+            ShouldScrollDown = false;
             await JS.InvokeVoidAsync("chatScroll.scrollToBottom", MessagesContainer);
         }
     }
 
-    async void CarregarChat()
+    #endregion [LOAD]
+
+    #region [SEND]
+    async Task SendMessage()
     {
-        var chatId = ChatState.ChatSelecionadoId;
-
-        if (chatId == Guid.Empty)
-        {
-            Mensagens.Clear();
-            TituloChatAtual = "Novo chat";
-            Enviando = false;
-            DeveRolarParaFim = false;
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
-
-        Mensagens = await ChatService.GetMessagesAsync(chatId);
-        var chats = await ChatService.ListChatsAsync();
-        TituloChatAtual = chats.FirstOrDefault(c => c.Id == chatId)?.Name ?? "Chat";
-        DeveRolarParaFim = true;
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    async Task Enviar()
-    {
-        if (Enviando || string.IsNullOrWhiteSpace(Texto))
+        if (Sending || string.IsNullOrWhiteSpace(Message))
         {
             return;
         }
 
-        var textoUsuario = Texto.Trim();
+        var UserMessage = Message.Trim();
 
-        Texto = string.Empty;
-        Enviando = true;
+        Message = string.Empty;
+        Sending = true;
 
-        Mensagens.Add(new ChatMessage
+        Messages.Add(new ChatMessage
         {
             Role = "user",
-            Content = textoUsuario
+            Content = UserMessage
         });
 
-        DeveRolarParaFim = true;
+        ShouldScrollDown = true;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            if (ChatState.ChatSelecionadoId == Guid.Empty)
+            if (ChatState.IdSelectedChat == Guid.Empty)
             {
-                var novoId = await ChatService.CreateChatAsync(textoUsuario);
+                var newId = await ChatService.CreateChatAsync(UserMessage);
 
-                ChatState.SelecionarChat(novoId);
+                ChatState.SelectChat(newId);
 
-                Mensagens = await ChatService.GetMessagesAsync(novoId);
+                Messages = await ChatService.GetMessagesAsync(newId);
                 var chats = await ChatService.ListChatsAsync();
-                TituloChatAtual = chats.FirstOrDefault(c => c.Id == novoId)?.Name ?? "Chat";
-                DeveRolarParaFim = true;
+                CurrentChatTitle = chats.FirstOrDefault(c => c.Id == newId)?.Name ?? "Chat";
+                ShouldScrollDown = true;
                 return;
             }
 
-            await ChatService.SendMessageAsync(ChatState.ChatSelecionadoId, textoUsuario);
-            Mensagens = await ChatService.GetMessagesAsync(ChatState.ChatSelecionadoId);
-            DeveRolarParaFim = true;
+            await ChatService.SendMessageAsync(ChatState.IdSelectedChat, UserMessage);
+            Messages = await ChatService.GetMessagesAsync(ChatState.IdSelectedChat);
+            ShouldScrollDown = true;
         }
         finally
         {
-            Enviando = false;
+            Sending = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
+    #endregion [SEND]
+
+    #region [ANIMATION]
     async Task HandleInputKeyDown(KeyboardEventArgs e)
-    {
+    {   
         if (e.Key == "Enter")
         {
-            await Enviar();
+            await SendMessage();
         }
     }
 
-    bool EhMensagemBot(ChatMessage msg) => msg.Role is "assistant" or "bot";
+    bool IsBotMessage(ChatMessage msg) => msg.Role is "assistant" or "bot";
 
     public void Dispose()
     {
-        ChatState.OnChange -= CarregarChat;
+        ChatState.OnChange -= LoadChat;
     }
+
+    #endregion [ANIMATION]
 }

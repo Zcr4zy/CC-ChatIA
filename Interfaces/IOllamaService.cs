@@ -4,7 +4,7 @@ namespace CC_ChatIA.Interfaces
 {
     public interface IOllamaService
     {
-        Task<string> SendMessageAsync(List<ChatMessage> mensagens);
-        Task<string> GenerateTitleAsync(string texto);
+        Task<string> GenerateTitleAsync(string text);
+        Task<string> SendMessageAsync(List<ChatMessage> messages);
     }
 }

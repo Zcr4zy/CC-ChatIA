@@ -2,13 +2,13 @@ namespace CC_ChatIA.Models
 {
     public class ChatStateService
     {
-        public Guid ChatSelecionadoId { get; private set; }
+        public Guid IdSelectedChat { get; private set; }
 
         public event Action? OnChange;
 
-        public void SelecionarChat(Guid id)
+        public void SelectChat(Guid id)
         {
-            ChatSelecionadoId = id;
+            IdSelectedChat = id;
             OnChange?.Invoke();
         }
     }

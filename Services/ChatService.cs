@@ -16,53 +16,6 @@ namespace CC_ChatIA.Services
             _factory = context;
         }
 
-        public async Task<Guid> CreateChatAsync(string firstMessage)
-        {
-            var chatId = Guid.NewGuid();
-            var agora = DateTime.UtcNow;
-
-            var respostaIA = await _ollama.SendMessageAsync(new List<ChatMessage>
-            {
-                new() { Role = "user", Content = firstMessage }
-            });
-
-            var titulo = await _ollama.GenerateTitleAsync(firstMessage);
-
-            var chat = new Chat
-            {
-                Id = chatId,
-                Name = titulo,
-                CreatedAt = agora,
-                UpdatedAt = agora,
-                ChatMessages = new List<ChatMessage>
-                {
-                    new ChatMessage
-                    {
-                        Id = Guid.NewGuid(),
-                        ChatId = chatId,
-                        Role = "user",
-                        Content = firstMessage,
-                        CreatedAt = agora
-                    },
-                    new ChatMessage
-                    {
-                        Id = Guid.NewGuid(),
-                        ChatId = chatId,
-                        Role = "assistant",
-                        Content = respostaIA,
-                        CreatedAt = DateTime.UtcNow
-                    }
-                }
-            };
-
-            using var context = _factory.CreateDbContext();
-
-            context.Chats.Add(chat);
-            await context.SaveChangesAsync();
-
-            return chatId;
-        }
-
         public async Task<List<Chat>> ListChatsAsync()
         {
             using var context = _factory.CreateDbContext();
@@ -82,20 +35,65 @@ namespace CC_ChatIA.Services
                 .ToListAsync();
         }
 
-        public async Task<string> SendMessageAsync(Guid chatId, string mensagem)
+        public async Task<Guid> CreateChatAsync(string firstMessage)
+        {
+            var chatId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+
+            var IAResponse = await _ollama.SendMessageAsync(new List<ChatMessage>
+            {
+                new() { Role = "user", Content = firstMessage }
+            });
+
+            var chatTitle = await _ollama.GenerateTitleAsync(firstMessage);
+
+            var chat = new Chat
+            {
+                Id = chatId,
+                Name = chatTitle,
+                CreatedAt = now,
+                UpdatedAt = now,
+                ChatMessages = new List<ChatMessage>
+                {
+                    new ChatMessage
+                    {
+                        Id = Guid.NewGuid(),
+                        ChatId = chatId,
+                        Role = "user",
+                        Content = firstMessage,
+                        CreatedAt = now
+                    },
+                    new ChatMessage
+                    {
+                        Id = Guid.NewGuid(),
+                        ChatId = chatId,
+                        Role = "assistant",
+                        Content = IAResponse,
+                        CreatedAt = DateTime.UtcNow
+                    }
+                }
+            };
+
+            using var context = _factory.CreateDbContext();
+
+            context.Chats.Add(chat);
+            await context.SaveChangesAsync();
+
+            return chatId;
+        }
+
+        public async Task<string> SendMessageAsync(Guid chatId, string message)
         {
             using var context = _factory.CreateDbContext();
 
-            var chatExiste = await context.Chats.AnyAsync(c => c.Id == chatId);
+            var chatExists = await context.Chats.AnyAsync(c => c.Id == chatId);
 
-            if (!chatExiste)
-            {
-                throw new InvalidOperationException("Chat não encontrado.");
-            }
+            if (!chatExists)
+                throw new InvalidOperationException("Chat não encontrado!");
+            
+            var now = DateTime.UtcNow;
 
-            var agora = DateTime.UtcNow;
-
-            var historico = await context.ChatMessages
+            var historic = await context.ChatMessages
                 .AsNoTracking()
                 .Where(m => m.ChatId == chatId)
                 .OrderBy(m => m.CreatedAt)
@@ -106,13 +104,13 @@ namespace CC_ChatIA.Services
                 })
                 .ToListAsync();
 
-            historico.Add(new ChatMessage
+            historic.Add(new ChatMessage
             {
                 Role = "user",
-                Content = mensagem
+                Content = message
             });
 
-            var resposta = await _ollama.SendMessageAsync(historico);
+            var response = await _ollama.SendMessageAsync(historic);
 
             context.ChatMessages.AddRange(
                 new ChatMessage
@@ -120,43 +118,39 @@ namespace CC_ChatIA.Services
                     Id = Guid.NewGuid(),
                     ChatId = chatId,
                     Role = "user",
-                    Content = mensagem,
-                    CreatedAt = agora
+                    Content = message,
+                    CreatedAt = now
                 },
                 new ChatMessage
                 {
                     Id = Guid.NewGuid(),
                     ChatId = chatId,
                     Role = "assistant",
-                    Content = resposta,
+                    Content = response,
                     CreatedAt = DateTime.UtcNow
                 });
 
-            var linhasAfetadas = await context.Chats
+            var affectedLines = await context.Chats
                 .Where(c => c.Id == chatId)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(c => c.UpdatedAt, DateTime.UtcNow));
 
-            if (linhasAfetadas == 0)
-            {
+            if (affectedLines == 0)
                 throw new InvalidOperationException("Chat não encontrado para atualização.");
-            }
-
+            
             await context.SaveChangesAsync();
 
-            return resposta;
+            return response;
         }
 
-        public async Task DeletarChatAsync(Guid chatId)
+        public async Task DeleteChatAsync(Guid chatId)
         {
             using var context = _factory.CreateDbContext();
             var chat = await context.Chats.FindAsync(chatId);
 
             if (chat == null)
-            {
                 return;
-            }
-
+        
             context.Chats.Remove(chat);
             await context.SaveChangesAsync();
         }

@@ -4,18 +4,18 @@
 @inject IChatService ChatService
 
 <div class="layout">
-    <aside class="sidebar @(SidebarMinimizada ? "mini" : "")">
+    <aside class="sidebar @(SidebarIsMinimized ? "mini" : "")">
         <div class="buttons">
-            <button class="btn-new" @onclick="CreateChat">@(SidebarMinimizada ? "+" : "+ NOVO CHAT")</button>
+            <button class="btn-new" @onclick="CreateChat">@(SidebarIsMinimized ? "+" : "+ NOVO CHAT")</button>
             <button class="btn-toggle" @onclick="ToggleSidebar">☰</button>
         </div>
 
         <div class="chat-list">
             @foreach (var chat in Chats)
             {
-                <div class="chat-item @(chat.Id == ChatSelecionadoId ? "active" : "")" @onclick="() => Selecionar(chat.Id)">
+                <div class="chat-item @(chat.Id == IdSelectedChat ? "active" : "")" @onclick="() => SelectChat(chat.Id)">
                     <span>@chat.Name</span>
-                    <button class="delete-btn" @onclick="@(e => Deletar(chat.Id))" @onclick:stopPropagation="true">
+                    <button class="delete-btn" @onclick="@(e => DeleteChat(chat.Id))" @onclick:stopPropagation="true">
                         🗑️
                     </button>
                 </div>      
@@ -23,7 +23,7 @@
         </div>
         <div class="profile">
             <div class="avatar">C</div>
-            <span>Carlos e Carlinho</span>
+            <span>Carlos / Carlinho</span>
         </div>
     </aside>
     <main class="main">
@@ -37,55 +37,18 @@
     protected override async Task OnInitializedAsync()
     {
         ChatState.OnChange += HandleChatStateChanged;
-        ChatSelecionadoId = ChatState.ChatSelecionadoId;
-        await RecarregarChatsAsync();
-    }
-    #endregion [LOAD]
-
-    #region [SELEÇÃO]
-    Guid ChatSelecionadoId = Guid.Empty;
-    void Selecionar(Guid id)
-    {
-        ChatState.SelecionarChat(id);
-    }
-    #endregion [SELEÇÃO]
-
-    #region [ANIMAÇÃO]
-    bool SidebarMinimizada = false;
-    void ToggleSidebar()
-    {
-        SidebarMinimizada = !SidebarMinimizada;
-    }
-    #endregion [ANIMAÇÃO]
-
-    #region [CREATECHAT]
-    void CreateChat(){
-        ChatState.SelecionarChat(Guid.Empty);
-        StateHasChanged();
-    }
-
-    #endregion [CREATECHAT]
-    async Task Deletar(Guid id)
-    {
-        await ChatService.DeletarChatAsync(id);
-
-        if (ChatSelecionadoId == id)
-        {
-            ChatState.SelecionarChat(Guid.Empty);
-        }
-
-        await RecarregarChatsAsync();
-        await InvokeAsync(StateHasChanged);
+        IdSelectedChat = ChatState.IdSelectedChat;
+        await ReloadChatsAsync();
     }
 
     async void HandleChatStateChanged()
     {
-        ChatSelecionadoId = ChatState.ChatSelecionadoId;
-        await RecarregarChatsAsync();
+        IdSelectedChat = ChatState.IdSelectedChat;
+        await ReloadChatsAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    async Task RecarregarChatsAsync()
+    async Task ReloadChatsAsync()
     {
         Chats = await ChatService.ListChatsAsync();
     }
@@ -94,4 +57,46 @@
     {
         ChatState.OnChange -= HandleChatStateChanged;
     }
+
+    #endregion [LOAD]
+
+    #region [SELECTION]
+    Guid IdSelectedChat = Guid.Empty;
+    void SelectChat(Guid id)
+    {
+        ChatState.SelectChat(id);
+    }
+    #endregion [SELECTION]
+
+    #region [ANIMATION]
+    bool SidebarIsMinimized = false;
+    void ToggleSidebar()
+    {
+        SidebarIsMinimized = !SidebarIsMinimized;
+    }
+    #endregion [ANIMATION]
+
+    #region [CREATECHAT]
+    void CreateChat(){
+        ChatState.SelectChat(Guid.Empty);
+        StateHasChanged();
+    }
+
+    #endregion [CREATECHAT]
+
+    #region [DELETECHAT]
+    async Task DeleteChat(Guid id)
+    {
+        await ChatService.DeleteChatAsync(id);
+
+        if (IdSelectedChat == id)
+        {
+            ChatState.SelectChat(Guid.Empty);
+        }
+
+        await ReloadChatsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    #endregion [DELETECHAT]
 }
