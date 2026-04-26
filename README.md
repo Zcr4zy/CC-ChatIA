@@ -46,7 +46,7 @@ CC-CHATIA/
 
 Antes de começar, certifique-se de ter instalado:
 
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [PostgreSQL 15+](https://www.postgresql.org/download/)
 - [Ollama](https://ollama.ai/download)
 - Modelo llama3.2:3b instalado no Ollama
