@@ -7,7 +7,7 @@
 .btn-new {
     background: #0ea5e9;
     border: none;
-    padding: 12px;
+    padding: 7px;
     border-radius: 10px;
     color: white;
     font-weight: bold;
@@ -39,7 +39,7 @@
     align-items: center;
     gap: 10px;
     border-top: 1px solid #1e293b;
-    padding-top: 10px;
+    padding-top: 26px;
 }
 
 .avatar {

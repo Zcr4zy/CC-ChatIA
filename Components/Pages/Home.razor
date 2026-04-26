@@ -1,9 +1,11 @@
 @page "/"
 @using Microsoft.AspNetCore.Components.Web
+@implements IDisposable
 @rendermode InteractiveServer
 
 @inject ChatStateService ChatState
 @inject IChatService ChatService
+@inject IJSRuntime JS
 
 @if (ChatState.ChatSelecionadoId == Guid.Empty)
 {
@@ -27,7 +29,7 @@ else
         <div class="chat-sub">AI</div>
     </div>
 
-    <div class="messages">
+    <div class="messages" @ref="MessagesContainer">
         @foreach (var msg in Mensagens)
         {
             <div class="message-row @(msg.Role == "user" ? "user-row" : "bot-row")">
@@ -73,11 +75,21 @@ else
     string TituloChatAtual = "Novo chat";
     string Texto = string.Empty;
     bool Enviando;
+    bool DeveRolarParaFim;
+    ElementReference MessagesContainer;
 
-    #region [UPDATESCREENCONFIGURATION]
     protected override void OnInitialized()
     {
         ChatState.OnChange += CarregarChat;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (DeveRolarParaFim && ChatState.ChatSelecionadoId != Guid.Empty)
+        {
+            DeveRolarParaFim = false;
+            await JS.InvokeVoidAsync("chatScroll.scrollToBottom", MessagesContainer);
+        }
     }
 
     async void CarregarChat()
@@ -89,6 +101,7 @@ else
             Mensagens.Clear();
             TituloChatAtual = "Novo chat";
             Enviando = false;
+            DeveRolarParaFim = false;
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -96,17 +109,11 @@ else
         Mensagens = await ChatService.GetMessagesAsync(chatId);
         var chats = await ChatService.ListChatsAsync();
         TituloChatAtual = chats.FirstOrDefault(c => c.Id == chatId)?.Name ?? "Chat";
+        DeveRolarParaFim = true;
 
         await InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose()
-    {
-        ChatState.OnChange -= CarregarChat;
-    }
-    #endregion [UPDATESCREENCONFIGURATION]
-
-    #region [SENDMESSAGE]
     async Task Enviar()
     {
         if (Enviando || string.IsNullOrWhiteSpace(Texto))
@@ -125,6 +132,7 @@ else
             Content = textoUsuario
         });
 
+        DeveRolarParaFim = true;
         await InvokeAsync(StateHasChanged);
 
         try
@@ -138,11 +146,13 @@ else
                 Mensagens = await ChatService.GetMessagesAsync(novoId);
                 var chats = await ChatService.ListChatsAsync();
                 TituloChatAtual = chats.FirstOrDefault(c => c.Id == novoId)?.Name ?? "Chat";
+                DeveRolarParaFim = true;
                 return;
             }
 
             await ChatService.SendMessageAsync(ChatState.ChatSelecionadoId, textoUsuario);
             Mensagens = await ChatService.GetMessagesAsync(ChatState.ChatSelecionadoId);
+            DeveRolarParaFim = true;
         }
         finally
         {
@@ -160,5 +170,9 @@ else
     }
 
     bool EhMensagemBot(ChatMessage msg) => msg.Role is "assistant" or "bot";
-    #endregion [SENDMESSAGE]
+
+    public void Dispose()
+    {
+        ChatState.OnChange -= CarregarChat;
+    }
 }
